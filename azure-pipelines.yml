@@ -26,7 +26,7 @@ variables:
   k8sNamespace: 'demo-devops'
 
 pool:
-  name: 'self-host'
+  name: 'self-pool'
 
 # ============================================
 # Stage 1: Build, Test & Analyze
