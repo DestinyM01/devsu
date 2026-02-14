@@ -80,12 +80,9 @@ stages:
         - checkout: self
           clean: false
 
-        # --- Build, Lint & Test inside Docker (as agent user) ---
+        # --- Build, Lint & Test inside Docker ---
         - script: |
             docker run --rm \
-              --user $(id -u):$(id -g) \
-              -e HOME=/tmp \
-              -e PATH=/tmp/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin \
               -v $(Build.SourcesDirectory):/app \
               -w /app \
               python:3.11 \
