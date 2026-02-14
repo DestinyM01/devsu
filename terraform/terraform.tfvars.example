@@ -1,0 +1,10 @@
+# Copy this file to terraform.tfvars and adjust values
+project_name       = "demo-devops"
+location           = "East US"
+environment        = "production"
+acr_name           = "demodevopsacr"
+kubernetes_version = "1.29"
+node_vm_size       = "Standard_B2s"
+node_count         = 2
+node_min_count     = 1
+node_max_count     = 3

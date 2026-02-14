@@ -1,0 +1,181 @@
+# Azure DevOps CI/CD Pipeline
+# ===========================
+# Triggers on push to main branch and pull requests.
+# Stages: Build & Test → Docker Build & Push → Deploy to AKS
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  # Azure Container Registry
+  azureSubscription: 'az-conn-tf'  # Name of your Azure Service Connection
+  acrName: 'demodevopsacr'                       # ACR name (without .azurecr.io)
+  imageRepository: 'demo-devops-python'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  tag: '$(Build.BuildId)'
+  # Kubernetes
+  aksResourceGroup: 'demo-devops-rg'
+  aksClusterName: 'demo-devops-aks'
+  k8sNamespace: 'demo-devops'
+
+pool:
+  pool: 'self-pool'
+
+# ============================================
+# Stage 1: Build, Test & Analyze
+# ============================================
+stages:
+  - stage: BuildAndTest
+    displayName: 'Build, Test & Analyze'
+    jobs:
+      - job: BuildTestAnalyze
+        displayName: 'Build, Lint, Test & Coverage'
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Use Python 3.11'
+            inputs:
+              versionSpec: '3.11'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements-dev.txt
+            displayName: 'Install dependencies'
+
+          # --- Static Code Analysis ---
+          - script: |
+              ruff check api/ demo/ --output-format=junit > ruff-results.xml || true
+              ruff check api/ demo/
+            displayName: 'Run Ruff (static analysis)'
+
+          - script: |
+              ruff format --check api/ demo/
+            displayName: 'Run Ruff (formatter check)'
+            continueOnError: true
+
+          # --- Unit Tests with Coverage ---
+          - script: |
+              python manage.py test --verbosity=2
+            displayName: 'Run unit tests'
+
+          - script: |
+              coverage run manage.py test
+              coverage xml -o coverage.xml
+              coverage html -d htmlcov
+              coverage report
+            displayName: 'Run tests with coverage'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish test results'
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/ruff-results.xml'
+              testRunTitle: 'Ruff Static Analysis'
+            condition: always()
+
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish code coverage'
+            inputs:
+              summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
+            condition: always()
+
+  # ============================================
+  # Stage 2: Docker Build & Push to ACR
+  # ============================================
+  - stage: Docker
+    displayName: 'Docker Build & Push'
+    dependsOn: BuildAndTest
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: DockerBuildPush
+        displayName: 'Build and Push to ACR'
+        steps:
+          - task: Docker@2
+            displayName: 'Build Docker image'
+            inputs:
+              containerRegistry: '$(azureSubscription)'
+              repository: '$(imageRepository)'
+              command: 'build'
+              Dockerfile: '$(dockerfilePath)'
+              tags: |
+                $(tag)
+                latest
+
+          - task: Docker@2
+            displayName: 'Push Docker image to ACR'
+            inputs:
+              containerRegistry: '$(azureSubscription)'
+              repository: '$(imageRepository)'
+              command: 'push'
+              tags: |
+                $(tag)
+                latest
+
+          # --- Vulnerability Scan ---
+          - script: |
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress $(acrName).azurecr.io/$(imageRepository):$(tag)
+            displayName: 'Trivy vulnerability scan'
+            continueOnError: true
+
+  # ============================================
+  # Stage 3: Deploy to AKS
+  # ============================================
+  - stage: Deploy
+    displayName: 'Deploy to AKS'
+    dependsOn: Docker
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployToAKS
+        displayName: 'Deploy to Kubernetes'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: KubernetesManifest@1
+                  displayName: 'Create namespace'
+                  inputs:
+                    action: 'deploy'
+                    connectionType: 'azureResourceManager'
+                    azureSubscriptionConnection: '$(azureSubscription)'
+                    azureResourceGroup: '$(aksResourceGroup)'
+                    kubernetesCluster: '$(aksClusterName)'
+                    manifests: 'k8s/namespace.yml'
+
+                - task: KubernetesManifest@1
+                  displayName: 'Deploy ConfigMap & Secret'
+                  inputs:
+                    action: 'deploy'
+                    connectionType: 'azureResourceManager'
+                    azureSubscriptionConnection: '$(azureSubscription)'
+                    azureResourceGroup: '$(aksResourceGroup)'
+                    kubernetesCluster: '$(aksClusterName)'
+                    namespace: '$(k8sNamespace)'
+                    manifests: |
+                      k8s/configmap.yml
+                      k8s/secret.yml
+
+                - task: KubernetesManifest@1
+                  displayName: 'Deploy application'
+                  inputs:
+                    action: 'deploy'
+                    connectionType: 'azureResourceManager'
+                    azureSubscriptionConnection: '$(azureSubscription)'
+                    azureResourceGroup: '$(aksResourceGroup)'
+                    kubernetesCluster: '$(aksClusterName)'
+                    namespace: '$(k8sNamespace)'
+                    manifests: |
+                      k8s/deployment.yml
+                      k8s/service.yml
+                      k8s/ingress.yml
+                      k8s/hpa.yml
+                    containers: '$(acrName).azurecr.io/$(imageRepository):$(tag)'
