@@ -85,6 +85,7 @@ stages:
             docker run --rm \
               --user $(id -u):$(id -g) \
               -e HOME=/tmp \
+              -e PATH=/tmp/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin \
               -v $(Build.SourcesDirectory):/app \
               -w /app \
               python:3.11 \
@@ -92,7 +93,6 @@ stages:
                 pip install --upgrade pip &&
                 pip install -r requirements-dev.txt &&
                 pip install coverage ruff &&
-                export PATH=/tmp/.local/bin:\$PATH &&
                 ruff check api/ demo/ --output-format=junit > ruff-results.xml || true &&
                 ruff check api/ demo/ &&
                 ruff format --check api/ demo/ || true &&
