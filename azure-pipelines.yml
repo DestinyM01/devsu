@@ -29,9 +29,48 @@ pool:
   name: 'self-pool'
 
 # ============================================
-# Stage 1: Build, Test & Analyze
+# Stage 0: Provision Infrastructure with Terraform
 # ============================================
 stages:
+- stage: Infrastructure
+  displayName: 'Provision Infrastructure'
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+  jobs:
+  - job: TerraformApply
+    displayName: 'Terraform Init & Apply'
+    steps:
+      - checkout: self
+
+      - task: AzureCLI@2
+        displayName: 'Terraform Init & Apply'
+        inputs:
+          azureSubscription: '$(azureSubscription)'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          addSpnToEnvironment: true
+          inlineScript: |
+            set -e
+
+            # Let Terraform use the Azure CLI session
+            export ARM_USE_CLI=true
+
+            cd $(Build.SourcesDirectory)/terraform
+
+            echo "=== Terraform Init ==="
+            terraform init -input=false
+
+            echo "=== Terraform Plan ==="
+            terraform plan -input=false -out=tfplan
+
+            echo "=== Terraform Apply ==="
+            terraform apply -input=false -auto-approve tfplan
+
+            echo "=== Terraform Outputs ==="
+            terraform output -json
+
+# ============================================
+# Stage 1: Build, Test & Analyze
+# ============================================
 - stage: BuildAndTest
   displayName: 'Build, Test & Analyze'
   jobs:
@@ -39,10 +78,13 @@ stages:
       displayName: 'Build, Lint, Test & Coverage'
       steps:
         - checkout: self
+          clean: false
 
-        # --- Build, Lint & Test inside Docker ---
+        # --- Build, Lint & Test inside Docker (as agent user) ---
         - script: |
             docker run --rm \
+              --user $(id -u):$(id -g) \
+              -e HOME=/tmp \
               -v $(Build.SourcesDirectory):/app \
               -w /app \
               python:3.11 \
@@ -77,98 +119,100 @@ stages:
             summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
           condition: always()
 
-  # ============================================
-  # Stage 2: Docker Build & Push to ACR
-  # ============================================
-    - stage: Docker
-      displayName: 'Docker Build & Push'
-      dependsOn: BuildAndTest
-      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-      jobs:
-      - job: DockerBuildPush
-        displayName: 'Build and Push to ACR'
-        steps:
+# ============================================
+# Stage 2: Docker Build & Push to ACR
+# ============================================
+- stage: Docker
+  displayName: 'Docker Build & Push'
+  dependsOn:
+    - Infrastructure
+    - BuildAndTest
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - job: DockerBuildPush
+    displayName: 'Build and Push to ACR'
+    steps:
 
-          # Login to Azure using Azure RM service connection
-          - task: AzureCLI@2
-            displayName: 'Login to Azure & ACR'
-            inputs:
-              azureSubscription: '$(azureSubscription)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                az acr login --name $(acrName)
+      # Login to Azure using Azure RM service connection
+      - task: AzureCLI@2
+        displayName: 'Login to Azure & ACR'
+        inputs:
+          azureSubscription: '$(azureSubscription)'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            az acr login --name $(acrName)
 
-          # Build Docker image
-          - script: |
-              docker build -t $(acrName).azurecr.io/$(imageRepository):$(tag) -t $(acrName).azurecr.io/$(imageRepository):latest -f $(dockerfilePath) .
-            displayName: 'Build Docker image'
+      # Build Docker image
+      - script: |
+          docker build -t $(acrName).azurecr.io/$(imageRepository):$(tag) -t $(acrName).azurecr.io/$(imageRepository):latest -f $(dockerfilePath) .
+        displayName: 'Build Docker image'
 
-          # Push Docker image
-          - script: |
-              docker push $(acrName).azurecr.io/$(imageRepository):$(tag)
-              docker push $(acrName).azurecr.io/$(imageRepository):latest
-            displayName: 'Push Docker image to ACR'
+      # Push Docker image
+      - script: |
+          docker push $(acrName).azurecr.io/$(imageRepository):$(tag)
+          docker push $(acrName).azurecr.io/$(imageRepository):latest
+        displayName: 'Push Docker image to ACR'
 
-          # Vulnerability Scan
-          - script: |
-              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-              trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress $(acrName).azurecr.io/$(imageRepository):$(tag)
-            displayName: 'Trivy vulnerability scan'
-            continueOnError: true
+      # Vulnerability Scan
+      - script: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress $(acrName).azurecr.io/$(imageRepository):$(tag)
+        displayName: 'Trivy vulnerability scan'
+        continueOnError: true
 
-  # ============================================
-  # Stage 3: Deploy to AKS
-  # ============================================
-    - stage: Deploy
-      displayName: 'Deploy to AKS'
-      dependsOn: Docker
-      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-      jobs:
-      - deployment: DeployToAKS
-        displayName: 'Deploy to Kubernetes'
-        environment: 'production'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: self
+# ============================================
+# Stage 3: Deploy to AKS
+# ============================================
+- stage: Deploy
+  displayName: 'Deploy to AKS'
+  dependsOn: Docker
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToAKS
+    displayName: 'Deploy to Kubernetes'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
 
-                - task: KubernetesManifest@1
-                  displayName: 'Create namespace'
-                  inputs:
-                    action: 'deploy'
-                    connectionType: 'azureResourceManager'
-                    azureSubscriptionConnection: '$(azureSubscription)'
-                    azureResourceGroup: '$(aksResourceGroup)'
-                    kubernetesCluster: '$(aksClusterName)'
-                    manifests: 'k8s/namespace.yml'
+            - task: KubernetesManifest@1
+              displayName: 'Create namespace'
+              inputs:
+                action: 'deploy'
+                connectionType: 'azureResourceManager'
+                azureSubscriptionConnection: '$(azureSubscription)'
+                azureResourceGroup: '$(aksResourceGroup)'
+                kubernetesCluster: '$(aksClusterName)'
+                manifests: 'k8s/namespace.yml'
 
-                - task: KubernetesManifest@1
-                  displayName: 'Deploy ConfigMap & Secret'
-                  inputs:
-                    action: 'deploy'
-                    connectionType: 'azureResourceManager'
-                    azureSubscriptionConnection: '$(azureSubscription)'
-                    azureResourceGroup: '$(aksResourceGroup)'
-                    kubernetesCluster: '$(aksClusterName)'
-                    namespace: '$(k8sNamespace)'
-                    manifests: |
-                      k8s/configmap.yml
-                      k8s/secret.yml
+            - task: KubernetesManifest@1
+              displayName: 'Deploy ConfigMap & Secret'
+              inputs:
+                action: 'deploy'
+                connectionType: 'azureResourceManager'
+                azureSubscriptionConnection: '$(azureSubscription)'
+                azureResourceGroup: '$(aksResourceGroup)'
+                kubernetesCluster: '$(aksClusterName)'
+                namespace: '$(k8sNamespace)'
+                manifests: |
+                  k8s/configmap.yml
+                  k8s/secret.yml
 
-                - task: KubernetesManifest@1
-                  displayName: 'Deploy application'
-                  inputs:
-                    action: 'deploy'
-                    connectionType: 'azureResourceManager'
-                    azureSubscriptionConnection: '$(azureSubscription)'
-                    azureResourceGroup: '$(aksResourceGroup)'
-                    kubernetesCluster: '$(aksClusterName)'
-                    namespace: '$(k8sNamespace)'
-                    manifests: |
-                      k8s/deployment.yml
-                      k8s/service.yml
-                      k8s/ingress.yml
-                      k8s/hpa.yml
-                    containers: '$(acrName).azurecr.io/$(imageRepository):$(tag)'
+            - task: KubernetesManifest@1
+              displayName: 'Deploy application'
+              inputs:
+                action: 'deploy'
+                connectionType: 'azureResourceManager'
+                azureSubscriptionConnection: '$(azureSubscription)'
+                azureResourceGroup: '$(aksResourceGroup)'
+                kubernetesCluster: '$(aksClusterName)'
+                namespace: '$(k8sNamespace)'
+                manifests: |
+                  k8s/deployment.yml
+                  k8s/service.yml
+                  k8s/ingress.yml
+                  k8s/hpa.yml
+                containers: '$(acrName).azurecr.io/$(imageRepository):$(tag)'

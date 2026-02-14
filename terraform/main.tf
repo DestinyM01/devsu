@@ -14,8 +14,8 @@ terraform {
 
   # Uncomment for remote state (recommended):
   # backend "azurerm" {
-  #   resource_group_name  = "terraform-state-rg"
-  #   storage_account_name = "tfstatedemops"
+  #   resource_group_name  = "rg-terraform-backend"
+  #   storage_account_name = "tfstateyourenglish"
   #   container_name       = "tfstate"
   #   key                  = "aks.terraform.tfstate"
   # }
