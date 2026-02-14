@@ -25,7 +25,7 @@ variable "acr_name" {
 variable "kubernetes_version" {
   description = "Kubernetes version for AKS"
   type        = string
-  default     = "1.31"
+  default     = "1.32"
 }
 
 variable "node_vm_size" {
