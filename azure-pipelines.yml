@@ -28,12 +28,10 @@ variables:
 pool:
   name: 'self-pool'
 
-  
-stages:
 # ============================================
 # Stage 1: Build, Test & Analyze
 # ============================================
-
+stages:
 - stage: BuildAndTest
   displayName: 'Build, Test & Analyze'
   jobs:
@@ -79,14 +77,14 @@ stages:
             summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
           condition: always()
 
-   # ============================================
+  # ============================================
   # Stage 2: Docker Build & Push to ACR
   # ============================================
-  - stage: Docker
-    displayName: 'Docker Build & Push'
-    dependsOn: BuildAndTest
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    jobs:
+    - stage: Docker
+      displayName: 'Docker Build & Push'
+      dependsOn: BuildAndTest
+      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      jobs:
       - job: DockerBuildPush
         displayName: 'Build and Push to ACR'
         steps:
@@ -122,11 +120,11 @@ stages:
   # ============================================
   # Stage 3: Deploy to AKS
   # ============================================
-  - stage: Deploy
-    displayName: 'Deploy to AKS'
-    dependsOn: Docker
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    jobs:
+    - stage: Deploy
+      displayName: 'Deploy to AKS'
+      dependsOn: Docker
+      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      jobs:
       - deployment: DeployToAKS
         displayName: 'Deploy to Kubernetes'
         environment: 'production'
