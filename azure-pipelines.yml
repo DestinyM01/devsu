@@ -94,10 +94,10 @@ stages:
                 ruff check api/ demo/ &&
                 ruff format --check api/ demo/ || true &&
                 python manage.py test --verbosity=2 &&
-                coverage run manage.py test &&
-                coverage xml -o coverage.xml &&
-                coverage html -d htmlcov &&
-                coverage report
+                python -m coverage run manage.py test &&
+                python -m coverage xml -o coverage.xml &&
+                python -m coverage html -d htmlcov &&
+                python -m coverage report
               "
           displayName: 'Run build, lint, tests & coverage inside Docker'
 
