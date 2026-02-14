@@ -40,6 +40,7 @@ stages:
     displayName: 'Terraform Init & Apply'
     steps:
       - checkout: self
+        clean: false
 
       - task: AzureCLI@2
         displayName: 'Terraform Init & Apply'
@@ -100,6 +101,14 @@ stages:
                 python -m coverage report
               "
           displayName: 'Run build, lint, tests & coverage inside Docker'
+
+        # --- Fix root-owned files created by Docker ---
+        - script: |
+            docker run --rm \
+              -v $(Build.SourcesDirectory):/app \
+              alpine chown -R $(id -u):$(id -g) /app
+          displayName: 'Fix file ownership (root → agent)'
+          condition: always()
 
         # --- Publish Ruff Results ---
         - task: PublishTestResults@2
