@@ -28,62 +28,56 @@ variables:
 pool:
   name: 'self-pool'
 
+  
+stages:
 # ============================================
 # Stage 1: Build, Test & Analyze
 # ============================================
-stages:
-  - stage: BuildAndTest
-    displayName: 'Build, Test & Analyze'
-    jobs:
-      - job: BuildTestAnalyze
-        displayName: 'Build, Lint, Test & Coverage'
-        steps:
-          - task: UsePythonVersion@0
-            displayName: 'Use Python 3.11'
-            inputs:
-              versionSpec: '3.11'
 
-          - script: |
-              python -m pip install --upgrade pip
-              pip install -r requirements-dev.txt
-            displayName: 'Install dependencies'
+- stage: BuildAndTest
+  displayName: 'Build, Test & Analyze'
+  jobs:
+    - job: BuildTestAnalyze
+      displayName: 'Build, Lint, Test & Coverage'
+      steps:
+        - checkout: self
 
-          # --- Static Code Analysis ---
-          - script: |
-              ruff check api/ demo/ --output-format=junit > ruff-results.xml || true
-              ruff check api/ demo/
-            displayName: 'Run Ruff (static analysis)'
+        # --- Build, Lint & Test inside Docker ---
+        - script: |
+            docker run --rm \
+              -v $(Build.SourcesDirectory):/app \
+              -w /app \
+              python:3.11 \
+              bash -c "
+                pip install --upgrade pip &&
+                pip install -r requirements-dev.txt &&
+                pip install coverage ruff &&
+                ruff check api/ demo/ --output-format=junit > ruff-results.xml || true &&
+                ruff check api/ demo/ &&
+                ruff format --check api/ demo/ || true &&
+                python manage.py test --verbosity=2 &&
+                coverage run manage.py test &&
+                coverage xml -o coverage.xml &&
+                coverage html -d htmlcov &&
+                coverage report
+              "
+          displayName: 'Run build, lint, tests & coverage inside Docker'
 
-          - script: |
-              ruff format --check api/ demo/
-            displayName: 'Run Ruff (formatter check)'
-            continueOnError: true
+        # --- Publish Ruff Results ---
+        - task: PublishTestResults@2
+          displayName: 'Publish Ruff results'
+          inputs:
+            testResultsFormat: 'JUnit'
+            testResultsFiles: '**/ruff-results.xml'
+            testRunTitle: 'Ruff Static Analysis'
+          condition: always()
 
-          # --- Unit Tests with Coverage ---
-          - script: |
-              python manage.py test --verbosity=2
-            displayName: 'Run unit tests'
-
-          - script: |
-              coverage run manage.py test
-              coverage xml -o coverage.xml
-              coverage html -d htmlcov
-              coverage report
-            displayName: 'Run tests with coverage'
-
-          - task: PublishTestResults@2
-            displayName: 'Publish test results'
-            inputs:
-              testResultsFormat: 'JUnit'
-              testResultsFiles: '**/ruff-results.xml'
-              testRunTitle: 'Ruff Static Analysis'
-            condition: always()
-
-          - task: PublishCodeCoverageResults@2
-            displayName: 'Publish code coverage'
-            inputs:
-              summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
-            condition: always()
+        # --- Publish Coverage ---
+        - task: PublishCodeCoverageResults@2
+          displayName: 'Publish code coverage'
+          inputs:
+            summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
+          condition: always()
 
    # ============================================
   # Stage 2: Docker Build & Push to ACR
