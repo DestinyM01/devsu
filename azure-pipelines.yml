@@ -163,7 +163,9 @@ stages:
 
       # Vulnerability Scan
       - script: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          mkdir -p $HOME/bin
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $HOME/bin
+          export PATH=$HOME/bin:$PATH
           trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress $(acrName).azurecr.io/$(imageRepository):$(tag)
         displayName: 'Trivy vulnerability scan'
         continueOnError: true
