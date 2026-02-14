@@ -14,8 +14,8 @@ pr:
       - main
 
 variables:
-  # Azure Container Registry
-  azureSubscription: 'az-conn-tf'  # Name of your Azure Service Connection
+  # Service Connections (create both in Azure DevOps → Project Settings → Service connections)
+  azureSubscription: 'az-conn-tf'                # Type: Azure Resource Manager (for AKS deploy)
   acrName: 'demodevopsacr'                       # ACR name (without .azurecr.io)
   imageRepository: 'demo-devops-python'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
@@ -26,7 +26,7 @@ variables:
   k8sNamespace: 'demo-devops'
 
 pool:
-  pool: 'self-pool'
+  name: 'self-host'
 
 # ============================================
 # Stage 1: Build, Test & Analyze
@@ -85,7 +85,7 @@ stages:
               summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
             condition: always()
 
-  # ============================================
+   # ============================================
   # Stage 2: Docker Build & Push to ACR
   # ============================================
   - stage: Docker
@@ -96,28 +96,29 @@ stages:
       - job: DockerBuildPush
         displayName: 'Build and Push to ACR'
         steps:
-          - task: Docker@2
+
+          # Login to Azure using Azure RM service connection
+          - task: AzureCLI@2
+            displayName: 'Login to Azure & ACR'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az acr login --name $(acrName)
+
+          # Build Docker image
+          - script: |
+              docker build -t $(acrName).azurecr.io/$(imageRepository):$(tag) -t $(acrName).azurecr.io/$(imageRepository):latest -f $(dockerfilePath) .
             displayName: 'Build Docker image'
-            inputs:
-              containerRegistry: '$(azureSubscription)'
-              repository: '$(imageRepository)'
-              command: 'build'
-              Dockerfile: '$(dockerfilePath)'
-              tags: |
-                $(tag)
-                latest
 
-          - task: Docker@2
+          # Push Docker image
+          - script: |
+              docker push $(acrName).azurecr.io/$(imageRepository):$(tag)
+              docker push $(acrName).azurecr.io/$(imageRepository):latest
             displayName: 'Push Docker image to ACR'
-            inputs:
-              containerRegistry: '$(azureSubscription)'
-              repository: '$(imageRepository)'
-              command: 'push'
-              tags: |
-                $(tag)
-                latest
 
-          # --- Vulnerability Scan ---
+          # Vulnerability Scan
           - script: |
               curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
               trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress $(acrName).azurecr.io/$(imageRepository):$(tag)
