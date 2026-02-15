@@ -1,7 +1,4 @@
 # Azure DevOps CI/CD Pipeline
-# ===========================
-# Triggers on push to main branch and pull requests.
-# Stages: Build & Test → Docker Build & Push → Deploy to AKS
 
 trigger:
   branches:
@@ -14,9 +11,8 @@ pr:
       - main
 
 variables:
-  # Service Connections (create both in Azure DevOps → Project Settings → Service connections)
-  azureSubscription: 'az-conn-tf'                # Type: Azure Resource Manager (for AKS deploy)
-  acrName: 'demodevopsacr'                       # ACR name (without .azurecr.io)
+  azureSubscription: 'az-conn-tf'                
+  acrName: 'demodevopsacr'                       
   imageRepository: 'demo-devops-python'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
