@@ -1,6 +1,6 @@
-# Demo DevOps Python
+# Andujar Online — Plataforma Azure IaC
 
-API REST lista para producción construida con Django, contenerizada con Docker, orquestada con Kubernetes en Azure AKS, automatizada con Azure DevOps CI/CD y provisionada con Terraform.
+Infraestructura como Código (IaC) empresarial para una API REST de producción construida con Django, contenerizada con Docker, orquestada con Kubernetes en Azure AKS, automatizada con Azure DevOps CI/CD y provisionada con Terraform.
 
 ---
 
@@ -33,7 +33,7 @@ graph TB
         ACR[Azure Container Registry]
         subgraph "Clúster AKS"
             ING[Ingress Controller<br/>nginx]
-            subgraph "namespace demo-devops"
+            subgraph "namespace andujar-online"
                 SVC[Service<br/>ClusterIP:80]
                 CM[ConfigMap]
                 SEC[Secret]
@@ -155,12 +155,12 @@ ruff format --check api/ demo/
 
 ```bash
 # Construir
-docker build -t demo-devops-python:latest .
+docker build -t andujar-online-api:latest .
 
 # Ejecutar
-docker run -d --name demo-devops -p 8000:8000 \
+docker run -d --name andujar-online -p 8000:8000 \
   -e DJANGO_SECRET_KEY="tu-clave-secreta" \
-  demo-devops-python:latest
+  andujar-online-api:latest
 
 # Probar
 curl http://localhost:8000/health/
@@ -213,7 +213,7 @@ El pipeline está definido en `azure-pipelines.yml`.
 
 | Archivo | Recurso | Descripción |
 |---|---|---|
-| `namespace.yml` | Namespace | Namespace `demo-devops` |
+| `namespace.yml` | Namespace | Namespace `andujar-online` |
 | `configmap.yml` | ConfigMap | DEBUG, ALLOWED_HOSTS, DATABASE_NAME |
 | `secret.yml` | Secret | DJANGO_SECRET_KEY (base64) |
 | `deployment.yml` | Deployment | 2 réplicas, probes, límites de recursos, rolling update |
@@ -225,7 +225,7 @@ El pipeline está definido en `azure-pipelines.yml`.
 
 ```bash
 # Obtener credenciales de AKS
-az aks get-credentials --resource-group demo-devops-rg --name demo-devops-aks
+az aks get-credentials --resource-group andujar-online-rg --name andujar-online-aks
 
 # Aplicar todos los manifiestos
 kubectl apply -f k8s/namespace.yml
@@ -237,8 +237,8 @@ kubectl apply -f k8s/ingress.yml
 kubectl apply -f k8s/hpa.yml
 
 # Verificar
-kubectl get all -n demo-devops
-kubectl get hpa -n demo-devops
+kubectl get all -n andujar-online
+kubectl get hpa -n andujar-online
 ```
 
 ### Pruebas Locales (Minikube)
@@ -249,12 +249,12 @@ minikube addons enable ingress
 minikube addons enable metrics-server
 
 eval $(minikube docker-env)
-docker build -t demo-devops-python:latest .
+docker build -t andujar-online-api:latest .
 
 # Actualizar deployment.yml: imagePullPolicy: Never
 kubectl apply -f k8s/
 
-kubectl port-forward -n demo-devops svc/demo-devops-python 8000:80
+kubectl port-forward -n andujar-online svc/andujar-online-api 8000:80
 curl http://localhost:8000/health/
 ```
 
@@ -286,7 +286,7 @@ terraform plan
 terraform apply
 
 # Configurar kubectl
-az aks get-credentials --resource-group demo-devops-rg --name demo-devops-aks
+az aks get-credentials --resource-group andujar-online-rg --name andujar-online-aks
 
 # Cuando termines:
 terraform destroy
@@ -298,7 +298,7 @@ terraform destroy
 
 | Decisión | Justificación |
 |---|---|
-| **Django (starter)** | Requerido por la evaluación — Devsu demo-devops-python |
+| **Django** | Framework robusto con soporte nativo para REST API, ORM y panel de administración |
 | **Gunicorn** | Servidor WSGI de producción, reemplaza el servidor de desarrollo de Django |
 | **Azure DevOps** | El usuario tiene acceso a Azure DevOps; integración nativa con AKS/ACR |
 | **Azure ACR** | Integración estrecha con AKS mediante identidad administrada (AcrPull) |
@@ -307,8 +307,8 @@ terraform destroy
 | **Rolling update** | Despliegues sin tiempo de inactividad (`maxUnavailable: 0`) |
 | **Contenedor no-root** | Mejor práctica de seguridad a nivel de Docker y K8s |
 | **Endpoint de salud** | Se agregó `/health/` para las probes de liveness/readiness/startup de K8s |
-| **Terraform para Azure** | Puntos extra por IaC; infraestructura reproducible |
-| **Nodos Standard_B2s** | Económicos para demo; rendimiento con capacidad de ráfaga |
+| **Terraform para Azure** | Infraestructura reproducible, versionada y auditada como código |
+| **Nodos Standard_B2s** | Costo-eficientes en producción; rendimiento con capacidad de ráfaga |
 
 ---
 
@@ -354,7 +354,7 @@ terraform destroy
 │   ├── service.yml
 │   ├── ingress.yml
 │   └── hpa.yml                # Autoescalado
-├── terraform/                 # IaC de Azure (puntos extra)
+├── terraform/                 # IaC de Azure (Terraform)
 │   ├── main.tf                # RG, ACR, AKS
 │   ├── variables.tf
 │   ├── outputs.tf
@@ -373,4 +373,4 @@ terraform destroy
 
 ## Licencia
 
-Copyright © 2023 Devsu. Todos los derechos reservados.
+Copyright © 2026 Andujar Online. Todos los derechos reservados.
