@@ -1,26 +1,26 @@
-# Andujar Online — Plataforma Azure IaC
+# Andujar Online — Azure IaC Platform
 
-Infraestructura como Código (IaC) empresarial para una API REST de producción construida con Django, contenerizada con Docker, orquestada con Kubernetes en Azure AKS, automatizada con Azure DevOps CI/CD y provisionada con Terraform.
+Enterprise-grade Infrastructure as Code (IaC) for a production REST API built with Django, containerized with Docker, orchestrated with Kubernetes on Azure AKS, automated with Azure DevOps CI/CD, and provisioned with Terraform.
 
 ---
 
-## Tabla de Contenidos
+## Table of Contents
 
-- [Arquitectura](#arquitectura)
-- [Aplicación](#aplicación)
-- [Desarrollo Local](#desarrollo-local)
+- [Architecture](#architecture)
+- [Application](#application)
+- [Local Development](#local-development)
 - [Docker](#docker)
-- [Pipeline CI/CD (Azure DevOps)](#pipeline-cicd-azure-devops)
-- [Despliegue en Kubernetes](#despliegue-en-kubernetes)
-- [Infraestructura como Código (Terraform)](#infraestructura-como-código-terraform)
-- [Decisiones de Diseño](#decisiones-de-diseño)
-- [Consideraciones de Producción](#consideraciones-de-producción)
+- [CI/CD Pipeline (Azure DevOps)](#cicd-pipeline-azure-devops)
+- [Kubernetes Deployment](#kubernetes-deployment)
+- [Infrastructure as Code (Terraform)](#infrastructure-as-code-terraform)
+- [Design Decisions](#design-decisions)
+- [Production Considerations](#production-considerations)
 
 ---
 
-## Arquitectura
+## Architecture
 
-### Arquitectura de Alto Nivel
+### High-Level Architecture
 
 ```mermaid
 graph TB
@@ -31,14 +31,14 @@ graph TB
 
     subgraph "Azure Cloud"
         ACR[Azure Container Registry]
-        subgraph "Clúster AKS"
+        subgraph "AKS Cluster"
             ING[Ingress Controller<br/>nginx]
             subgraph "namespace andujar-online"
                 SVC[Service<br/>ClusterIP:80]
                 CM[ConfigMap]
                 SEC[Secret]
                 HPA[HorizontalPodAutoscaler]
-                subgraph "Deployment - 2+ réplicas"
+                subgraph "Deployment - 2+ replicas"
                     POD1[Pod 1<br/>Django + Gunicorn]
                     POD2[Pod 2<br/>Django + Gunicorn]
                 end
@@ -46,7 +46,7 @@ graph TB
         end
     end
 
-    USER[Usuario / Cliente] -->|HTTPS| ING
+    USER[User / Client] -->|HTTPS| ING
     ING --> SVC
     SVC --> POD1
     SVC --> POD2
@@ -54,26 +54,26 @@ graph TB
     CM -.->|env vars| POD2
     SEC -.->|secrets| POD1
     SEC -.->|secrets| POD2
-    HPA -.->|auto-escalar| POD1
-    HPA -.->|auto-escalar| POD2
+    HPA -.->|auto-scale| POD1
+    HPA -.->|auto-scale| POD2
     REPO -->|trigger| PIPE
     PIPE -->|build & push| ACR
     PIPE -->|deploy| ING
-    ACR -.->|pull imagen| POD1
-    ACR -.->|pull imagen| POD2
+    ACR -.->|pull image| POD1
+    ACR -.->|pull image| POD2
 ```
 
-### Flujo del Pipeline CI/CD
+### CI/CD Pipeline Flow
 
 ```mermaid
 graph LR
-    A[Push de Código] --> B[Instalar Deps]
+    A[Code Push] --> B[Install Deps]
     B --> C[Ruff Linter]
-    C --> D[Tests Unitarios]
-    D --> E[Cobertura de Código]
+    C --> D[Unit Tests]
+    D --> E[Code Coverage]
     E --> F[Docker Build & Push ACR]
-    F --> G[Escaneo Vuln Trivy]
-    G --> H[Desplegar en AKS]
+    F --> G[Trivy Vuln Scan]
+    G --> H[Deploy to AKS]
 
     style A fill:#2196F3,stroke:#1565C0,color:#fff
     style F fill:#FF9800,stroke:#E65100,color:#fff
@@ -82,56 +82,56 @@ graph LR
 
 ---
 
-## Aplicación
+## Application
 
-API REST construida con **Django 4.2** + **Django REST Framework 3.14**, usando SQLite.
+REST API built with **Django 4.2** + **Django REST Framework 3.14**, using SQLite.
 
-### Endpoints de la API
+### API Endpoints
 
-| Endpoint | Método | Descripción |
+| Endpoint | Method | Description |
 |---|---|---|
-| `/api/users/` | GET | Listar todos los usuarios |
-| `/api/users/` | POST | Crear un usuario (`{"dni": "...", "name": "..."}`) |
-| `/api/users/<id>/` | GET | Obtener usuario por ID |
-| `/health/` | GET | Verificación de salud (probes de K8s) |
-| `/admin/` | GET | Panel de administración de Django |
+| `/api/users/` | GET | List all users |
+| `/api/users/` | POST | Create a user (`{"dni": "...", "name": "..."}`) |
+| `/api/users/<id>/` | GET | Get user by ID |
+| `/health/` | GET | Health check (K8s probes) |
+| `/admin/` | GET | Django admin panel |
 
 ---
 
-## Desarrollo Local
+## Local Development
 
-### Prerrequisitos
+### Prerequisites
 
 - Python 3.11+
-- Docker (para ejecución contenerizada)
-- Azure CLI + kubectl + Terraform (para despliegue en la nube)
+- Docker (for containerized execution)
+- Azure CLI + kubectl + Terraform (for cloud deployment)
 
-### Ejecutar la Aplicación
+### Run the Application
 
 ```bash
-# Crear entorno virtual
+# Create virtual environment
 python -m venv .venv
 source .venv/bin/activate
 
-# Instalar dependencias
+# Install dependencies
 pip install -r requirements-dev.txt
 
-# Ejecutar migraciones
+# Run migrations
 python manage.py migrate
 
-# Ejecutar la aplicación
+# Run the application
 python manage.py runserver
 
-# Abrir: http://localhost:8000/api/
+# Open: http://localhost:8000/api/
 ```
 
-### Ejecutar Tests
+### Run Tests
 
 ```bash
-# Ejecutar tests unitarios
+# Run unit tests
 python manage.py test --verbosity=2
 
-# Ejecutar con cobertura
+# Run with coverage
 coverage run manage.py test
 coverage report
 coverage html && open htmlcov/index.html
@@ -140,10 +140,10 @@ coverage html && open htmlcov/index.html
 ### Lint
 
 ```bash
-# Análisis estático
+# Static analysis
 ruff check api/ demo/
 
-# Verificación de formato
+# Format check
 ruff format --check api/ demo/
 ```
 
@@ -151,83 +151,83 @@ ruff format --check api/ demo/
 
 ## Docker
 
-### Construir y Ejecutar
+### Build and Run
 
 ```bash
-# Construir
+# Build
 docker build -t andujar-online-api:latest .
 
-# Ejecutar
+# Run
 docker run -d --name andujar-online -p 8000:8000 \
-  -e DJANGO_SECRET_KEY="tu-clave-secreta" \
+  -e DJANGO_SECRET_KEY="your-secret-key" \
   andujar-online-api:latest
 
-# Probar
+# Test
 curl http://localhost:8000/health/
 curl http://localhost:8000/api/users/
 ```
 
-### Características del Dockerfile
+### Dockerfile Features
 
-| Característica | Detalle |
+| Feature | Detail |
 |---|---|
-| Build multi-etapa | Imagen de producción más pequeña (~150MB) |
-| Gunicorn | Servidor WSGI de producción (3 workers) |
-| Usuario no-root | `appuser` por seguridad |
-| Health check | `HEALTHCHECK` integrado en `/health/` |
-| Archivos estáticos | `collectstatic` durante el build |
-| Migraciones | Aplicadas durante el build para SQLite |
+| Multi-stage build | Smaller production image (~150MB) |
+| Gunicorn | Production WSGI server (3 workers) |
+| Non-root user | `appuser` for security |
+| Health check | Built-in `HEALTHCHECK` on `/health/` |
+| Static files | `collectstatic` during build |
+| Migrations | Applied during build for SQLite |
 
 ---
 
-## Pipeline CI/CD (Azure DevOps)
+## CI/CD Pipeline (Azure DevOps)
 
-El pipeline está definido en `azure-pipelines.yml`.
+The pipeline is defined in `azure-pipelines.yml`.
 
-### Etapas del Pipeline
+### Pipeline Stages
 
-| Etapa | Herramientas | Propósito |
+| Stage | Tools | Purpose |
 |---|---|---|
-| **Build & Test** | pip, ruff, coverage | Instalar deps, lint, test, reporte de cobertura |
-| **Docker** | Docker, ACR, Trivy | Construir imagen, push a ACR, escaneo de vulnerabilidades |
-| **Deploy** | KubernetesManifest | Aplicar manifiestos K8s en AKS |
+| **Build & Test** | pip, ruff, coverage | Install deps, lint, test, coverage report |
+| **Docker** | Docker, ACR, Trivy | Build image, push to ACR, vulnerability scan |
+| **Deploy** | KubernetesManifest | Apply K8s manifests to AKS |
 
-### Configuración en Azure DevOps
+### Azure DevOps Setup
 
-1. **Crear un proyecto en Azure DevOps** e importar/vincular tu repositorio de GitHub
-2. **Crear una Service Connection** a Azure (Settings → Service connections → Azure Resource Manager)
-3. **Actualizar `azure-pipelines.yml`** con las variables:
+1. **Create an Azure DevOps project** and import/link your GitHub repository
+2. **Create a Service Connection** to Azure (Settings → Service connections → Azure Resource Manager)
+3. **Update `azure-pipelines.yml`** with your variables:
    ```yaml
-   azureSubscription: 'nombre-de-tu-service-connection'
-   acrName: 'tunombreacr'
-   aksResourceGroup: 'nombre-de-tu-rg'
-   aksClusterName: 'nombre-de-tu-aks'
+   azureSubscription: 'your-service-connection-name'
+   acrName: 'youracrname'
+   aksResourceGroup: 'your-rg-name'
+   aksClusterName: 'your-aks-name'
    ```
-4. **Crear un pipeline** apuntando a `azure-pipelines.yml`
+4. **Create a pipeline** pointing to `azure-pipelines.yml`
 
 ---
 
-## Despliegue en Kubernetes
+## Kubernetes Deployment
 
-### Manifiestos
+### Manifests
 
-| Archivo | Recurso | Descripción |
+| File | Resource | Description |
 |---|---|---|
-| `namespace.yml` | Namespace | Namespace `andujar-online` |
+| `namespace.yml` | Namespace | `andujar-online` namespace |
 | `configmap.yml` | ConfigMap | DEBUG, ALLOWED_HOSTS, DATABASE_NAME |
 | `secret.yml` | Secret | DJANGO_SECRET_KEY (base64) |
-| `deployment.yml` | Deployment | 2 réplicas, probes, límites de recursos, rolling update |
-| `service.yml` | Service | ClusterIP:80 → contenedor:8000 |
-| `ingress.yml` | Ingress | Ingress nginx con enrutamiento por dominio |
-| `hpa.yml` | HPA | 2–5 réplicas, autoescalado por CPU/memoria |
+| `deployment.yml` | Deployment | 2 replicas, probes, resource limits, rolling update |
+| `service.yml` | Service | ClusterIP:80 → container:8000 |
+| `ingress.yml` | Ingress | nginx Ingress with domain-based routing |
+| `hpa.yml` | HPA | 2–5 replicas, CPU/memory autoscaling |
 
-### Despliegue Manual en AKS
+### Manual Deployment to AKS
 
 ```bash
-# Obtener credenciales de AKS
+# Get AKS credentials
 az aks get-credentials --resource-group andujar-online-rg --name andujar-online-aks
 
-# Aplicar todos los manifiestos
+# Apply all manifests
 kubectl apply -f k8s/namespace.yml
 kubectl apply -f k8s/configmap.yml
 kubectl apply -f k8s/secret.yml
@@ -236,12 +236,12 @@ kubectl apply -f k8s/service.yml
 kubectl apply -f k8s/ingress.yml
 kubectl apply -f k8s/hpa.yml
 
-# Verificar
+# Verify
 kubectl get all -n andujar-online
 kubectl get hpa -n andujar-online
 ```
 
-### Pruebas Locales (Minikube)
+### Local Testing (Minikube)
 
 ```bash
 minikube start
@@ -251,7 +251,7 @@ minikube addons enable metrics-server
 eval $(minikube docker-env)
 docker build -t andujar-online-api:latest .
 
-# Actualizar deployment.yml: imagePullPolicy: Never
+# Update deployment.yml: imagePullPolicy: Never
 kubectl apply -f k8s/
 
 kubectl port-forward -n andujar-online svc/andujar-online-api 8000:80
@@ -260,117 +260,117 @@ curl http://localhost:8000/health/
 
 ---
 
-## Infraestructura como Código (Terraform)
+## Infrastructure as Code (Terraform)
 
-El directorio `terraform/` provisiona toda la infraestructura en Azure.
+The `terraform/` directory provisions all infrastructure on Azure.
 
-### Recursos Creados
+### Resources Created
 
-| Recurso | Propósito |
+| Resource | Purpose |
 |---|---|
-| Resource Group | Contenedor para todos los recursos de Azure |
-| Azure Container Registry | Almacenamiento de imágenes Docker |
-| Clúster AKS | Clúster de Kubernetes con nodos autoescalables |
-| Role Assignment | AcrPull — permite a AKS obtener imágenes de ACR |
+| Resource Group | Container for all Azure resources |
+| Azure Container Registry | Docker image storage |
+| AKS Cluster | Kubernetes cluster with autoscaling nodes |
+| Role Assignment | AcrPull — allows AKS to pull images from ACR |
 
-### Uso
+### Usage
 
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# Editar terraform.tfvars con tus valores
+# Edit terraform.tfvars with your values
 
 az login
 terraform init
 terraform plan
 terraform apply
 
-# Configurar kubectl
+# Configure kubectl
 az aks get-credentials --resource-group andujar-online-rg --name andujar-online-aks
 
-# Cuando termines:
+# When done:
 terraform destroy
 ```
 
 ---
 
-## Decisiones de Diseño
+## Design Decisions
 
-| Decisión | Justificación |
+| Decision | Rationale |
 |---|---|
-| **Django** | Framework robusto con soporte nativo para REST API, ORM y panel de administración |
-| **Gunicorn** | Servidor WSGI de producción, reemplaza el servidor de desarrollo de Django |
-| **Azure DevOps** | El usuario tiene acceso a Azure DevOps; integración nativa con AKS/ACR |
-| **Azure ACR** | Integración estrecha con AKS mediante identidad administrada (AcrPull) |
-| **Docker multi-etapa** | Imagen más pequeña, solo dependencias de producción en la etapa final |
-| **2 réplicas + HPA** | Requisito de alta disponibilidad; autoescala de 2→5 según la carga |
-| **Rolling update** | Despliegues sin tiempo de inactividad (`maxUnavailable: 0`) |
-| **Contenedor no-root** | Mejor práctica de seguridad a nivel de Docker y K8s |
-| **Endpoint de salud** | Se agregó `/health/` para las probes de liveness/readiness/startup de K8s |
-| **Terraform para Azure** | Infraestructura reproducible, versionada y auditada como código |
-| **Nodos Standard_B2s** | Costo-eficientes en producción; rendimiento con capacidad de ráfaga |
+| **Django** | Robust framework with native support for REST API, ORM, and admin panel |
+| **Gunicorn** | Production WSGI server, replaces Django's development server |
+| **Azure DevOps** | Native integration with AKS/ACR via managed identity |
+| **Azure ACR** | Tight AKS integration via managed identity (AcrPull) |
+| **Multi-stage Docker** | Smaller image, only production dependencies in the final stage |
+| **2 replicas + HPA** | High availability requirement; autoscales 2→5 under load |
+| **Rolling update** | Zero-downtime deployments (`maxUnavailable: 0`) |
+| **Non-root container** | Security best practice at Docker and K8s level |
+| **Health endpoint** | `/health/` added for K8s liveness/readiness/startup probes |
+| **Terraform for Azure** | Reproducible, versioned, and auditable infrastructure as code |
+| **Standard_B2s nodes** | Cost-efficient in production; burstable performance |
 
 ---
 
-## Consideraciones de Producción
+## Production Considerations
 
-| Área | Recomendación |
+| Area | Recommendation |
 |---|---|
-| **TLS/SSL** | Usar cert-manager + Let's Encrypt en AKS |
-| **DNS** | Apuntar dominio personalizado a la IP externa del Ingress de AKS |
-| **Secretos** | Usar Azure Key Vault con el driver CSI en lugar de secretos de K8s |
-| **Base de datos** | Reemplazar SQLite con Azure Database para PostgreSQL |
-| **Monitoreo** | Azure Monitor + Container Insights para métricas y logs |
-| **Respaldo** | Velero para respaldo del clúster |
-| **Políticas de red** | Restringir tráfico entre pods con Calico/Azure NPM |
-| **RBAC** | Integración con Azure AD para control de acceso granular en K8s |
-| **Pod Disruption Budget** | Asegurar disponibilidad durante actualizaciones de nodos |
+| **TLS/SSL** | Use cert-manager + Let's Encrypt on AKS |
+| **DNS** | Point custom domain to the AKS Ingress external IP |
+| **Secrets** | Use Azure Key Vault with CSI driver instead of K8s secrets |
+| **Database** | Replace SQLite with Azure Database for PostgreSQL |
+| **Monitoring** | Azure Monitor + Container Insights for metrics and logs |
+| **Backup** | Velero for cluster backup |
+| **Network Policies** | Restrict pod-to-pod traffic with Calico/Azure NPM |
+| **RBAC** | Azure AD integration for granular K8s access control |
+| **Pod Disruption Budget** | Ensure availability during node upgrades |
 
 ---
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 .
-├── azure-pipelines.yml        # Pipeline CI/CD de Azure DevOps
-├── api/                       # Aplicación Django REST Framework
-│   ├── models.py              # Modelo User
+├── azure-pipelines.yml        # Azure DevOps CI/CD pipeline
+├── api/                       # Django REST Framework application
+│   ├── models.py              # User model
 │   ├── views.py               # ViewSet + health check
-│   ├── serializers.py         # Serializador de User
-│   ├── urls.py                # Enrutamiento de la API
-│   ├── tests.py               # Tests unitarios (11 tests)
-│   ├── admin.py               # Registro en admin
-│   └── migrations/            # Migraciones de base de datos
-├── demo/                      # Configuración del proyecto Django
-│   ├── settings.py            # Settings (configurable por env)
-│   ├── urls.py                # URLs raíz + health
-│   ├── wsgi.py                # Configuración WSGI
-│   └── asgi.py                # Configuración ASGI
-├── k8s/                       # Manifiestos de Kubernetes
+│   ├── serializers.py         # User serializer
+│   ├── urls.py                # API routing
+│   ├── tests.py               # Unit tests (11 tests)
+│   ├── admin.py               # Admin registration
+│   └── migrations/            # Database migrations
+├── demo/                      # Django project configuration
+│   ├── settings.py            # Settings (env-configurable)
+│   ├── urls.py                # Root URLs + health
+│   ├── wsgi.py                # WSGI configuration
+│   └── asgi.py                # ASGI configuration
+├── k8s/                       # Kubernetes manifests
 │   ├── namespace.yml
 │   ├── configmap.yml
 │   ├── secret.yml
-│   ├── deployment.yml         # 2+ réplicas, probes
+│   ├── deployment.yml         # 2+ replicas, probes
 │   ├── service.yml
 │   ├── ingress.yml
-│   └── hpa.yml                # Autoescalado
-├── terraform/                 # IaC de Azure (Terraform)
+│   └── hpa.yml                # Autoscaling
+├── terraform/                 # Azure IaC (Terraform)
 │   ├── main.tf                # RG, ACR, AKS
 │   ├── variables.tf
 │   ├── outputs.tf
 │   └── terraform.tfvars.example
-├── Dockerfile                 # Multi-etapa, gunicorn
+├── Dockerfile                 # Multi-stage, Gunicorn
 ├── .dockerignore
 ├── .gitignore
 ├── manage.py
-├── requirements.txt           # Dependencias de producción
-├── requirements-dev.txt       # Dependencias de dev/test
-├── pyproject.toml             # Configuración de Ruff + cobertura
+├── requirements.txt           # Production dependencies
+├── requirements-dev.txt       # Dev/test dependencies
+├── pyproject.toml             # Ruff + coverage configuration
 └── README.md
 ```
 
 ---
 
-## Licencia
+## License
 
-Copyright © 2026 Andujar Online. Todos los derechos reservados.
+Copyright © 2026 Andujar Online. All rights reserved.
